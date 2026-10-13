@@ -59,6 +59,7 @@ jobs:
           </dict>
           </plist>
           EOF
+          codesign --force --deep --sign - AulaDriverApp.app
           zip -r dist/AulaDriverApp-${{ github.ref_name }}.zip AulaDriverApp.app
 
       - name: Generate Checksums

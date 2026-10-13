@@ -15,4 +15,11 @@ cask "aula-driver" do
     "~/Library/Application Support/com.aulakit.driver",
     "~/Library/Preferences/com.aulakit.driver.plist",
   ]
+
+  caveats <<~EOS
+    If macOS blocks opening "#{appdir}/AulaDriverApp.app" due to Apple Gatekeeper:
+      xattr -dr com.apple.quarantine "#{appdir}/AulaDriverApp.app"
+    Or install directly without quarantine:
+      brew install --cask --no-quarantine meitar/tap/aula-driver
+  EOS
 end
