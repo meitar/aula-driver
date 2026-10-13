@@ -7,7 +7,7 @@ cask "aula-driver" do
   desc "macOS companion driver app for Aula F108 Pro mechanical keyboard"
   homepage "https://github.com/meitar/aula-driver"
 
-  depends_on macos: ">= :ventura"
+  depends_on macos: :ventura
 
   app "AulaDriverApp.app"
 
