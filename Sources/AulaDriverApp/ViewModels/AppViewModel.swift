@@ -19,6 +19,7 @@ public final class AppViewModel: ObservableObject {
     @Published public var screenFitMode: ScreenFitMode = .contain
     @Published public var screenSlot: Int = 1
     @Published public var uploadProgress = DisplayUploadProgress(sentChunks: 0, totalChunks: 0)
+    @Published public var galleryItems: [ScreenGalleryItem] = []
 
     // RGB Studio State
     @Published public var rgbMode: Int = 11 // Rolling (default)
@@ -49,6 +50,7 @@ public final class AppViewModel: ObservableObject {
     public init() {
         self.profiles = ProfileManager.shared.loadProfiles()
         self.selectedProfile = profiles.first
+        self.galleryItems = ScreenGalleryManager.shared.loadItems()
         applyProfileToState(profiles.first ?? KeyboardProfile.standardMac)
         startMonitoring()
     }
@@ -139,6 +141,58 @@ public final class AppViewModel: ObservableObject {
                 }
             }
             return "Display media uploaded to slot \(slot)."
+        }
+    }
+
+    public func loadGallery() {
+        self.galleryItems = ScreenGalleryManager.shared.loadItems()
+    }
+
+    public func addGIFToGallery(url: URL, title: String? = nil, fitMode: ScreenFitMode = .contain) {
+        runAsyncAction(name: "Adding GIF to Gallery") {
+            let item = try ScreenGalleryManager.shared.addItem(from: url, title: title, fitMode: fitMode)
+            await MainActor.run {
+                self.loadGallery()
+            }
+            return "Saved '\(item.title)' to Screen Gallery (\(item.frameCount) frames, \(item.chunkCount) pages)."
+        }
+    }
+
+    public func activateGalleryItem(_ item: ScreenGalleryItem) {
+        guard wiredConnected else {
+            appendLog("Cannot activate GIF: Keyboard must be connected via USB-C.")
+            return
+        }
+
+        runAsyncAction(name: "Activating Screen Animation") {
+            let stream = try ScreenGalleryManager.shared.getStream(for: item)
+            await MainActor.run {
+                self.uploadProgress = DisplayUploadProgress(sentChunks: 0, totalChunks: item.chunkCount)
+                self.appendLog("Streaming '\(item.title)' (\(item.frameCount) frames, \(item.chunkCount) pages)...")
+            }
+
+            let device = try AulaDevice.connect()
+            try device.uploadDisplayStream(stream, slot: 1) { progress in
+                Task { @MainActor in
+                    self.uploadProgress = progress
+                }
+            }
+
+            try ScreenGalleryManager.shared.setActive(id: item.id)
+            await MainActor.run {
+                self.loadGallery()
+            }
+            return "'\(item.title)' is now active on the keyboard screen!"
+        }
+    }
+
+    public func removeGalleryItem(_ item: ScreenGalleryItem) {
+        do {
+            try ScreenGalleryManager.shared.removeItem(id: item.id)
+            loadGallery()
+            appendLog("Removed '\(item.title)' from gallery.")
+        } catch {
+            appendLog("Failed to delete gallery item: \(error.localizedDescription)")
         }
     }
 

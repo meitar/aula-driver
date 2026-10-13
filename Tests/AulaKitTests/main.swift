@@ -180,6 +180,59 @@ do {
     print("  ❌ MacroEngine test threw: \(error)")
 }
 
+// TEST 6: ScreenGalleryManager
+print("\n[Suite 6: ScreenGalleryManager]")
+do {
+    let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("AulaGalleryTest_\(UUID().uuidString)")
+    let manager = ScreenGalleryManager(customBaseDirectory: tempDir)
+
+    // Create a 240x135 test image
+    let width = AulaConstants.displayWidth
+    let height = AulaConstants.displayHeight
+    let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+    let context = CGContext(
+        data: nil,
+        width: width,
+        height: height,
+        bitsPerComponent: 8,
+        bytesPerRow: width * 4,
+        space: colorSpace,
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )!
+    context.setFillColor(red: 0, green: 1, blue: 0, alpha: 1) // Green
+    context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+    let cgImage = context.makeImage()!
+
+    let imgData = NSMutableData()
+    let destination = CGImageDestinationCreateWithData(imgData as CFMutableData, "public.png" as CFString, 1, nil)!
+    CGImageDestinationAddImage(destination, cgImage, nil)
+    CGImageDestinationFinalize(destination)
+
+    let item = try manager.addItem(data: imgData as Data, fileExtension: "png", title: "Test Green Screen")
+    assertEqual(item.title, "Test Green Screen", "Gallery item title stored correctly")
+    assertEqual(item.frameCount, 1, "Gallery item frame count is 1")
+    assertEqual(item.chunkCount, 16, "Gallery item chunk count is 16")
+
+    let loaded = manager.loadItems()
+    assertEqual(loaded.count, 1, "Gallery contains 1 item")
+    assertEqual(loaded.first?.id, item.id, "Gallery item ID matches")
+
+    let stream = try manager.getStream(for: item)
+    assertEqual(stream.count, 16 * 4096, "Pre-encoded cached stream retrieved with exact 16*4096 bytes")
+
+    try manager.setActive(id: item.id)
+    let updated = manager.loadItems().first
+    assertTrue(updated?.isActive == true, "Gallery item marked active")
+
+    try manager.removeItem(id: item.id)
+    assertEqual(manager.loadItems().count, 0, "Gallery item removed successfully")
+
+    try? FileManager.default.removeItem(at: tempDir)
+} catch {
+    testsFailed += 1
+    print("  ❌ ScreenGalleryManager test threw: \(error)")
+}
+
 print("\n========================================")
 print("📊 Results: \(testsPassed) passed, \(testsFailed) failed")
 print("========================================")

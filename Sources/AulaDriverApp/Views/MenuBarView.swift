@@ -58,6 +58,25 @@ public struct MenuBarView: View {
                 }
             }
 
+            // Screen Animation Switcher
+            if !vm.galleryItems.isEmpty {
+                Menu("Screen Animation") {
+                    ForEach(vm.galleryItems) { item in
+                        Button {
+                            vm.activateGalleryItem(item)
+                        } label: {
+                            HStack {
+                                Text(item.title)
+                                if item.isActive {
+                                    Text("✓")
+                                }
+                            }
+                        }
+                        .disabled(!vm.wiredConnected || vm.isWorking)
+                    }
+                }
+            }
+
             // Profile Switcher
             Menu("Switch Profile") {
                 ForEach(vm.profiles) { profile in

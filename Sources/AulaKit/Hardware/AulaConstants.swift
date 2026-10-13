@@ -24,7 +24,7 @@ public enum AulaConstants {
     public static let displayHeight = 135
     public static let headerLength = 256
     public static let frameBytes = displayWidth * displayHeight * 2 // 64,800 bytes per frame (RGB565)
-    public static let maxFrames = 255
+    public static let maxFrames = 141 // Capped to 141 to prevent SPI flash overflow into menu graphics region
 
     // Key Remapping & Macros
     public static let remapSlots = 144

@@ -20,9 +20,13 @@ func printHelp() {
                                       --colorful          Enable rainbow cycling
       rgb off                       Turn off keyboard backlighting
       rgb list                      List all 20 available lighting preset modes
-      screen upload <path> [opts]   Upload image/GIF to keyboard LCD screen (240x135)
+      screen upload <path> [opts]   Directly upload image/GIF to keyboard LCD screen (240x135)
                                       --slot <1-255>      Slot number (default: 1)
                                       --fit <fit|fill|stretch>
+      screen gallery list           List all saved animations in the GIF library
+      screen gallery add <path>     Pre-encode and save a GIF to library (--name, --fit)
+      screen gallery activate <id>  Instantly stream a saved animation to keyboard
+      screen gallery remove <id>    Delete a saved animation from library
       remap mac-layout [on|off]     Toggle Mac layout mode (swaps Win and Alt)
       remap reset                   Reset all key remappings to default
       perf [options]                Set performance and debounce latency
@@ -163,8 +167,124 @@ do {
         }
 
     case "screen":
-        guard args.count > 2, args[1] == "upload" else {
+        guard args.count > 1 else {
+            print("Usage: aula-cli screen <upload|gallery> [options]")
+            exit(1)
+        }
+        let screenSub = args[1]
+        if screenSub == "gallery" {
+            let gallerySub = args.count > 2 ? args[2] : "list"
+            let manager = ScreenGalleryManager.shared
+
+            switch gallerySub {
+            case "list":
+                let items = manager.loadItems()
+                if items.isEmpty {
+                    print("📁 Screen animation gallery is empty.")
+                    print("Use 'aula-cli screen gallery add <path.gif> [--name \"Title\"]' to add your favorite GIFs.")
+                } else {
+                    print("🖼️  Aula Screen Animation Gallery (\(items.count) items):")
+                    for (index, item) in items.enumerated() {
+                        let activeMark = item.isActive ? " [ACTIVE]" : ""
+                        print("  \(index + 1). \(item.title)\(activeMark)")
+                        print("     Frames: \(item.frameCount) | Pages: \(item.chunkCount) (\(item.chunkCount * 4) KB) | ID: \(item.id.uuidString.prefix(8))")
+                    }
+                }
+
+            case "add":
+                guard args.count > 3 else {
+                    print("Usage: aula-cli screen gallery add <path.gif> [--name \"Title\"] [--fit <fit|fill|stretch>]")
+                    exit(1)
+                }
+                let filePath = args[3]
+                var title: String?
+                var fitMode: ScreenFitMode = .contain
+
+                var i = 4
+                while i < args.count {
+                    if args[i] == "--name", i + 1 < args.count {
+                        title = args[i + 1]
+                        i += 2
+                    } else if args[i] == "--fit", i + 1 < args.count {
+                        let val = args[i + 1].lowercased()
+                        if val == "fill" { fitMode = .cover }
+                        else if val == "stretch" { fitMode = .stretch }
+                        else { fitMode = .contain }
+                        i += 2
+                    } else {
+                        i += 1
+                    }
+                }
+
+                let url = URL(fileURLWithPath: filePath)
+                print("⚡ Pre-encoding and saving '\(url.lastPathComponent)' into gallery...")
+                let item = try manager.addItem(from: url, title: title, fitMode: fitMode)
+                print("✅ Added '\(item.title)' to gallery (\(item.frameCount) frames, \(item.chunkCount) pages).")
+
+            case "activate":
+                guard args.count > 3 else {
+                    print("Usage: aula-cli screen gallery activate <index|title|id>")
+                    exit(1)
+                }
+                let target = args[3]
+                let items = manager.loadItems()
+                let matched: ScreenGalleryItem?
+                if let num = Int(target), (1...items.count).contains(num) {
+                    matched = items[num - 1]
+                } else {
+                    matched = items.first { $0.title.lowercased() == target.lowercased() || $0.id.uuidString.lowercased().hasPrefix(target.lowercased()) }
+                }
+
+                guard let item = matched else {
+                    print("❌ Gallery item '\(target)' not found. Run 'aula-cli screen gallery list' to see available items.")
+                    exit(1)
+                }
+
+                print("⚡ Instantly streaming '\(item.title)' to keyboard screen (\(item.frameCount) frames, \(item.chunkCount) pages)...")
+                let stream = try manager.getStream(for: item)
+                let device = try AulaDevice.connect()
+                try device.uploadDisplayStream(stream, slot: 1) { progress in
+                    let barLength = 30
+                    let filled = Int(progress.fraction * Double(barLength))
+                    let bar = String(repeating: "█", count: filled) + String(repeating: "░", count: max(0, barLength - filled))
+                    print("\r[\(bar)] \(progress.percent)% (\(progress.sentChunks)/\(progress.totalChunks))", terminator: "")
+                    fflush(stdout)
+                }
+                try manager.setActive(id: item.id)
+                print("\n✅ Animation '\(item.title)' is now active on keyboard screen!")
+
+            case "remove", "delete":
+                guard args.count > 3 else {
+                    print("Usage: aula-cli screen gallery remove <index|title|id>")
+                    exit(1)
+                }
+                let target = args[3]
+                let items = manager.loadItems()
+                let matched: ScreenGalleryItem?
+                if let num = Int(target), (1...items.count).contains(num) {
+                    matched = items[num - 1]
+                } else {
+                    matched = items.first { $0.title.lowercased() == target.lowercased() || $0.id.uuidString.lowercased().hasPrefix(target.lowercased()) }
+                }
+
+                guard let item = matched else {
+                    print("❌ Gallery item '\(target)' not found.")
+                    exit(1)
+                }
+
+                try manager.removeItem(id: item.id)
+                print("✅ Removed '\(item.title)' from screen animation gallery.")
+
+            default:
+                print("Unknown gallery command: \(gallerySub). Supported: list, add, activate, remove.")
+                exit(1)
+            }
+            break
+        }
+
+        guard screenSub == "upload", args.count > 2 else {
             print("Usage: aula-cli screen upload <file_path> [--slot <1-255>] [--fit <fit|fill|stretch>]")
+            print("       aula-cli screen gallery <list|add|activate|remove>")
             exit(1)
         }
         let filePath = args[2]
