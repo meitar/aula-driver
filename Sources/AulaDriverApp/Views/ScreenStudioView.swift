@@ -156,7 +156,7 @@ public struct ScreenStudioView: View {
                                     Label("Save to Gallery", systemImage: "plus.circle")
                                 }
                                 .buttonStyle(.bordered)
-                                .disabled(vm.selectedImageURL == nil || vm.isWorking)
+                                .disabled(vm.selectedImageURL == nil || vm.isScreenUploading)
 
                                 Button {
                                     if let url = vm.selectedImageURL {
@@ -171,7 +171,7 @@ public struct ScreenStudioView: View {
                                     Label("Save & Activate", systemImage: "bolt.fill")
                                 }
                                 .buttonStyle(.borderedProminent)
-                                .disabled(vm.selectedImageURL == nil || !vm.wiredConnected || vm.isWorking)
+                                .disabled(vm.selectedImageURL == nil || !vm.wiredConnected || vm.isScreenUploading)
                             }
                         }
                     }
@@ -277,7 +277,7 @@ public struct ScreenStudioView: View {
                         .font(.caption)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(!vm.wiredConnected || vm.isWorking)
+                .disabled(!vm.wiredConnected || vm.isScreenUploading)
 
                 Spacer()
 

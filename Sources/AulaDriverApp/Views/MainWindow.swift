@@ -38,19 +38,49 @@ public struct MainWindow: View {
             .listStyle(.sidebar)
             .frame(minWidth: 180)
         } detail: {
-            switch selectedTab {
-            case .dashboard:
-                DashboardView(vm: vm)
-            case .screen:
-                ScreenStudioView(vm: vm)
-            case .lighting:
-                LightingStudioView(vm: vm)
-            case .remap:
-                KeyRemapView(vm: vm)
-            case .macros:
-                MacroView(vm: vm)
-            case .profiles:
-                ProfileView(vm: vm)
+            VStack(spacing: 0) {
+                Group {
+                    switch selectedTab {
+                    case .dashboard:
+                        DashboardView(vm: vm)
+                    case .screen:
+                        ScreenStudioView(vm: vm)
+                    case .lighting:
+                        LightingStudioView(vm: vm)
+                    case .remap:
+                        KeyRemapView(vm: vm)
+                    case .macros:
+                        MacroView(vm: vm)
+                    case .profiles:
+                        ProfileView(vm: vm)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                // Persistent Background Screen Streaming Banner
+                if vm.isScreenUploading {
+                    HStack(spacing: 14) {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack {
+                                Text("Streaming to LCD Screen: \(vm.uploadingTitle)")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                Spacer()
+                                Text("\(vm.uploadProgress.percent)% (\(vm.uploadProgress.sentChunks)/\(vm.uploadProgress.totalChunks) pages)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            ProgressView(value: vm.uploadProgress.fraction)
+                                .tint(.accentColor)
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .overlay(Rectangle().frame(height: 1).foregroundColor(Color.secondary.opacity(0.2)), alignment: .top)
+                }
             }
         }
         .frame(minWidth: 800, minHeight: 550)

@@ -13,6 +13,8 @@ public final class AppViewModel: ObservableObject {
     @Published public var batteryPercent: Int?
     @Published public var logLines: [String] = []
     @Published public var isWorking = false
+    @Published public var isScreenUploading = false
+    @Published public var uploadingTitle = ""
 
     // Screen Studio State
     @Published public var selectedImageURL: URL?
@@ -123,24 +125,46 @@ public final class AppViewModel: ObservableObject {
             appendLog("Cannot upload display: Keyboard must be connected via USB-C.")
             return
         }
+        guard !isScreenUploading else {
+            appendLog("A screen upload is already in progress.")
+            return
+        }
 
         let slot = screenSlot
         let fit = screenFitMode
+        let title = url.deletingPathExtension().lastPathComponent
 
-        runAsyncAction(name: "Uploading Screen Media") {
-            let encoded = try DisplayEncoder.encodeImage(at: url, fitMode: fit)
-            await MainActor.run {
-                self.uploadProgress = DisplayUploadProgress(sentChunks: 0, totalChunks: encoded.chunkCount)
-                self.appendLog("Encoded \(encoded.frameCount) frame(s) (\(encoded.chunkCount) pages). Uploading...")
-            }
+        isScreenUploading = true
+        uploadingTitle = title
+        appendLog("Starting screen stream: '\(title)'...")
 
-            let device = try AulaDevice.connect()
-            try device.uploadDisplayStream(encoded.data, slot: slot) { progress in
-                Task { @MainActor in
-                    self.uploadProgress = progress
+        Task.detached(priority: .userInitiated) {
+            do {
+                let encoded = try DisplayEncoder.encodeImage(at: url, fitMode: fit)
+                await MainActor.run {
+                    self.uploadProgress = DisplayUploadProgress(sentChunks: 0, totalChunks: encoded.chunkCount)
+                    self.appendLog("Encoded \(encoded.frameCount) frame(s) (\(encoded.chunkCount) pages). Streaming over USB...")
+                }
+
+                let device = try AulaDevice.connect()
+                try device.uploadDisplayStream(encoded.data, slot: slot) { progress in
+                    Task { @MainActor in
+                        self.uploadProgress = progress
+                    }
+                }
+
+                await MainActor.run {
+                    self.isScreenUploading = false
+                    self.uploadingTitle = ""
+                    self.appendLog("✅ Display media '\(title)' uploaded successfully to slot \(slot)!")
+                }
+            } catch {
+                await MainActor.run {
+                    self.isScreenUploading = false
+                    self.uploadingTitle = ""
+                    self.appendLog("❌ Display upload failed: \(error.localizedDescription)")
                 }
             }
-            return "Display media uploaded to slot \(slot)."
         }
     }
 
@@ -163,26 +187,43 @@ public final class AppViewModel: ObservableObject {
             appendLog("Cannot activate GIF: Keyboard must be connected via USB-C.")
             return
         }
+        guard !isScreenUploading else {
+            appendLog("A screen upload is already in progress.")
+            return
+        }
 
-        runAsyncAction(name: "Activating Screen Animation") {
-            let stream = try ScreenGalleryManager.shared.getStream(for: item)
-            await MainActor.run {
-                self.uploadProgress = DisplayUploadProgress(sentChunks: 0, totalChunks: item.chunkCount)
-                self.appendLog("Streaming '\(item.title)' (\(item.frameCount) frames, \(item.chunkCount) pages)...")
-            }
+        isScreenUploading = true
+        uploadingTitle = item.title
+        appendLog("Streaming '\(item.title)' from pre-encoded cache...")
 
-            let device = try AulaDevice.connect()
-            try device.uploadDisplayStream(stream, slot: 1) { progress in
-                Task { @MainActor in
-                    self.uploadProgress = progress
+        Task.detached(priority: .userInitiated) {
+            do {
+                let stream = try ScreenGalleryManager.shared.getStream(for: item)
+                await MainActor.run {
+                    self.uploadProgress = DisplayUploadProgress(sentChunks: 0, totalChunks: item.chunkCount)
+                }
+
+                let device = try AulaDevice.connect()
+                try device.uploadDisplayStream(stream, slot: 1) { progress in
+                    Task { @MainActor in
+                        self.uploadProgress = progress
+                    }
+                }
+
+                try ScreenGalleryManager.shared.setActive(id: item.id)
+                await MainActor.run {
+                    self.isScreenUploading = false
+                    self.uploadingTitle = ""
+                    self.loadGallery()
+                    self.appendLog("✅ '\(item.title)' is now active on keyboard screen!")
+                }
+            } catch {
+                await MainActor.run {
+                    self.isScreenUploading = false
+                    self.uploadingTitle = ""
+                    self.appendLog("❌ Screen stream failed: \(error.localizedDescription)")
                 }
             }
-
-            try ScreenGalleryManager.shared.setActive(id: item.id)
-            await MainActor.run {
-                self.loadGallery()
-            }
-            return "'\(item.title)' is now active on the keyboard screen!"
         }
     }
 

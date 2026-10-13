@@ -157,7 +157,8 @@ public final class AulaDevice {
 
         // 3. Start ACK monitoring on interface 2
         rawInputPipe?.start()
-        _ = rawInputPipe?.waitForAck(timeout: 0.15)
+        defer { rawInputPipe?.close() }
+        _ = rawInputPipe?.waitForAck(timeout: 0.08)
 
         // 4. Send 4096-byte Output reports
         for chunkIndex in 0..<chunkCount {
@@ -170,7 +171,7 @@ public final class AulaDevice {
                 bytes: Array(chunk),
                 operation: "display page \(chunkIndex + 1)/\(chunkCount)"
             )
-            _ = rawInputPipe?.waitForAck(timeout: 0.35)
+            _ = rawInputPipe?.waitForAck(timeout: 0.12)
             progress(DisplayUploadProgress(sentChunks: chunkIndex + 1, totalChunks: chunkCount))
         }
 
@@ -544,9 +545,11 @@ public enum KeyRemapLayer: String, Codable, Sendable {
 }
 
 // MARK: - Asynchronous Raw Input Pipe for LCD ACKs
-private final class RawInputPipe {
+private final class RawInputPipe: @unchecked Sendable {
     private let device: IOHIDDevice
     private var inputBuffer: [UInt8]
+    private let queue = DispatchQueue(label: "com.aulakit.rawinput", qos: .userInteractive)
+    private let condition = NSCondition()
     private var ackCounter = 0
     private var started = false
 
@@ -568,27 +571,43 @@ private final class RawInputPipe {
                 { context, result, _, _, _, _, reportLength in
                     guard result == kIOReturnSuccess, reportLength > 0, let context else { return }
                     let pipe = Unmanaged<RawInputPipe>.fromOpaque(context).takeUnretainedValue()
+                    pipe.condition.lock()
                     pipe.ackCounter += 1
+                    pipe.condition.broadcast()
+                    pipe.condition.unlock()
                 },
                 context
             )
         }
-        IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
+        IOHIDDeviceSetDispatchQueue(device, queue)
     }
 
     func waitForAck(timeout: TimeInterval) -> Bool {
+        condition.lock()
+        defer { condition.unlock() }
+
         let baseline = ackCounter
         let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if ackCounter > baseline { return true }
-            CFRunLoopRunInMode(CFRunLoopMode.defaultMode, 0.02, true)
+
+        while ackCounter <= baseline {
+            if !condition.wait(until: deadline) {
+                return ackCounter > baseline
+            }
         }
-        return ackCounter > baseline
+        return true
     }
 
     func close() {
         guard started else { return }
-        IOHIDDeviceUnscheduleFromRunLoop(device, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
+        inputBuffer.withUnsafeMutableBufferPointer { pointer in
+            IOHIDDeviceRegisterInputReportCallback(
+                device,
+                pointer.baseAddress!,
+                pointer.count,
+                nil,
+                nil
+            )
+        }
         started = false
     }
 }

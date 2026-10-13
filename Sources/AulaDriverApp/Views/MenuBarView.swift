@@ -72,9 +72,21 @@ public struct MenuBarView: View {
                                 }
                             }
                         }
-                        .disabled(!vm.wiredConnected || vm.isWorking)
+                        .disabled(!vm.wiredConnected || vm.isScreenUploading)
                     }
                 }
+            }
+
+            if vm.isScreenUploading {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                    Text("Streaming LCD: \(vm.uploadProgress.percent)%")
+                        .font(.caption)
+                        .foregroundColor(.accentColor)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 4)
             }
 
             // Profile Switcher
