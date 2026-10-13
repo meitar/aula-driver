@@ -1,8 +1,8 @@
 class AulaCli < Formula
   desc "macOS driver and CLI suite for the Aula F108 Pro mechanical keyboard"
   homepage "https://github.com/meitar/aula-driver"
-  url "https://github.com/meitar/aula-driver/archive/refs/tags/v1.0.0.tar.gz"
-  sha256 "REPLACE_WITH_SHA256"
+  url "https://github.com/meitar/aula-driver/archive/refs/tags/v1.0.2.tar.gz"
+  sha256 "8ee9f231295b84810059b79d66a0836f5b3e4841ed3e4a68dc69ebd7d170d217"
   license "MIT"
   head "https://github.com/meitar/aula-driver.git", branch: "main"
 
