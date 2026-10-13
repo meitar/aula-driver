@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    name: Build & Publish Release Assets
+    runs-on: macos-14
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build aula-cli (Release)
+        run: |
+          swift build -c release --product aula-cli
+          mkdir -p dist
+          cp .build/release/aula-cli dist/aula-cli
+          cd dist
+          tar -czvf aula-cli-${{ github.ref_name }}-macos.tar.gz aula-cli
+          cd ..
+
+      - name: Build AulaDriverApp (Release)
+        run: |
+          swift build -c release --product AulaDriverApp
+          mkdir -p AulaDriverApp.app/Contents/MacOS
+          mkdir -p AulaDriverApp.app/Contents/Resources
+          cp .build/release/AulaDriverApp AulaDriverApp.app/Contents/MacOS/AulaDriverApp
+          cat << 'EOF' > AulaDriverApp.app/Contents/Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>AulaDriverApp</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.aulakit.driver</string>
+              <key>CFBundleName</key>
+              <string>Aula Driver</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${{ github.ref_name }}</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>13.0</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+          zip -r dist/AulaDriverApp-${{ github.ref_name }}.zip AulaDriverApp.app
+
+      - name: Generate Checksums
+        run: |
+          cd dist
+          shasum -a 256 *.tar.gz *.zip > checksums.txt
+          cat checksums.txt
+          cd ..
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/aula-cli-${{ github.ref_name }}-macos.tar.gz
+            dist/AulaDriverApp-${{ github.ref_name }}.zip
+            dist/checksums.txt
+          generate_release_notes: true

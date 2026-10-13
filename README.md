@@ -34,9 +34,32 @@ Since the manufacturer only provides Windows binaries (`AULA F108Pro.exe`), this
 - 💻 **Terminal CLI (`aula-cli`)**:
   - Fast command-line interface for scripting, terminal power-users, and automation.
 
+## Installation
+
+### Via Homebrew (Recommended)
+
+```bash
+# Tap the repository
+brew tap meitar/tap
+
+# Install the CLI utility
+brew install aula-cli
+
+# Or install the native macOS Companion App
+brew install --cask aula-driver
+```
+
+### Upgrading via Homebrew
+
+```bash
+brew update
+brew upgrade aula-cli
+brew upgrade --cask aula-driver
+```
+
 ---
 
-## Quick Start
+## Quick Start (Building from Source)
 
 ### Build & Run
 
@@ -44,7 +67,7 @@ Since the manufacturer only provides Windows binaries (`AULA F108Pro.exe`), this
 # Build release binaries
 make build
 
-# Run the test suite (38 automated unit tests)
+# Run the test suite (66 automated unit tests)
 make test
 
 # Run the macOS SwiftUI App (Menu Bar + Dashboard)
