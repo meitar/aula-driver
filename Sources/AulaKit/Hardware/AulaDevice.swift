@@ -242,29 +242,23 @@ public final class AulaDevice {
         }
 
         try commandExchange(Self.packet(0x04, 0x18))
-        usleep(AulaConstants.commandDelayMs)
 
         var initPacket = Self.packet(0x04, 0x23)
-        initPacket[2] = 0x09 // RGB mode
+        initPacket[8] = 0x09
         try commandExchange(initPacket)
-        usleep(AulaConstants.commandDelayMs)
 
         // Send 9 packets of 64 bytes
         for packetIndex in 0..<9 {
             let start = packetIndex * 64
             let chunk = Array(buffer[start..<(start + 64)])
-            if packetIndex == 8 {
-                try commandExchange(chunk)
-            } else {
-                try Self.setReport(
-                    device: commandDevice,
-                    type: kIOHIDReportTypeFeature,
-                    reportID: 0,
-                    bytes: chunk,
-                    operation: "per-key RGB chunk \(packetIndex + 1)"
-                )
-                usleep(AulaConstants.commandDelayMs)
-            }
+            try Self.setReport(
+                device: commandDevice,
+                type: kIOHIDReportTypeFeature,
+                reportID: 0,
+                bytes: chunk,
+                operation: "per-key RGB chunk \(packetIndex + 1)"
+            )
+            usleep(AulaConstants.commandDelayMs)
         }
 
         try commandExchange(Self.packet(0x04, 0x02))
@@ -279,35 +273,28 @@ public final class AulaDevice {
 
         // 1. Begin transaction
         try commandExchange(Self.packet(0x04, 0x18))
-        usleep(AulaConstants.commandDelayMs)
 
         // 2. Remap init (0x04 0x11 for normal, 0x04 0x27 for FN, byte[8] = 0x09)
         var initPacket = Self.packet(0x04, layer.commandByte)
         initPacket[8] = 0x09
         try commandExchange(initPacket)
-        usleep(AulaConstants.commandDelayMs)
 
-        // 3. Send 576 bytes across 9 packets
+        // 3. Send 576 bytes across 9 packets (pure payload chunks without readback)
         for packetIndex in 0..<9 {
             let start = packetIndex * 64
             let chunk = Array(table[start..<(start + 64)])
-            if packetIndex == 8 {
-                try commandExchange(chunk) // Readback required after final packet
-            } else {
-                try Self.setReport(
-                    device: commandDevice,
-                    type: kIOHIDReportTypeFeature,
-                    reportID: 0,
-                    bytes: chunk,
-                    operation: "remap chunk \(packetIndex + 1)"
-                )
-                usleep(AulaConstants.commandDelayMs)
-            }
+            try Self.setReport(
+                device: commandDevice,
+                type: kIOHIDReportTypeFeature,
+                reportID: 0,
+                bytes: chunk,
+                operation: "remap chunk \(packetIndex + 1)"
+            )
+            usleep(AulaConstants.commandDelayMs)
         }
 
         // 4. Apply
         try commandExchange(Self.packet(0x04, 0x02))
-        usleep(AulaConstants.commandDelayMs)
 
         // 5. Finalize
         _ = try? sendFeatureNoReadback(Self.packet(0x04, 0xF0))
@@ -412,26 +399,42 @@ public final class AulaDevice {
             operation: "SET_REPORT"
         )
 
+        // Allow keyboard MCU time to process the feature report
+        usleep(AulaConstants.commandDelayMs)
+
         var response = [UInt8](repeating: 0, count: AulaConstants.commandLength)
         var responseLength = response.count
-        let result = response.withUnsafeMutableBufferPointer { pointer in
-            IOHIDDeviceGetReport(
-                commandDevice,
-                kIOHIDReportTypeFeature,
-                0,
-                pointer.baseAddress!,
-                &responseLength
-            )
+        var result: IOReturn = kIOReturnError
+
+        // Retry loop for GET_REPORT in case device MCU is temporarily busy
+        for _ in 0..<5 {
+            responseLength = response.count
+            result = response.withUnsafeMutableBufferPointer { pointer in
+                IOHIDDeviceGetReport(
+                    commandDevice,
+                    kIOHIDReportTypeFeature,
+                    0,
+                    pointer.baseAddress!,
+                    &responseLength
+                )
+            }
+            if result == kIOReturnSuccess {
+                break
+            }
+            usleep(25_000)
         }
+
         guard result == kIOReturnSuccess else {
             throw AulaError.hidFailed("GET_REPORT (ACK)", Int32(result))
         }
+
+        usleep(AulaConstants.commandDelayMs)
     }
 
     private func sendZeroPages(_ count: Int) throws {
         guard count > 0 else { return }
         let zero = [UInt8](repeating: 0, count: AulaConstants.commandLength)
-        for _ in 0..<(count - 1) {
+        for _ in 0..<count {
             try Self.setReport(
                 device: commandDevice,
                 type: kIOHIDReportTypeFeature,
@@ -439,9 +442,8 @@ public final class AulaDevice {
                 bytes: zero,
                 operation: "zero page"
             )
-            Thread.sleep(forTimeInterval: 0.04)
+            usleep(AulaConstants.commandDelayMs)
         }
-        try commandExchange(zero)
     }
 
     private static func packet(_ first: UInt8, _ second: UInt8) -> [UInt8] {
