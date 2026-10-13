@@ -11,6 +11,8 @@ public struct KeyboardProfile: Identifiable, Codable, Sendable {
     public var rgbHexColor: String
     public var macLayoutEnabled: Bool
     public var keyRemaps: [Int: KeyAction]
+    public var fnKeyRemaps: [Int: KeyAction]
+    public var perKeyColors: [Int: String]
     public var responseLevel: Int
     public var sleepTime: Int
     public var gameModeEnabled: Bool
@@ -27,6 +29,8 @@ public struct KeyboardProfile: Identifiable, Codable, Sendable {
         rgbHexColor: String = "#00FF88",
         macLayoutEnabled: Bool = true,
         keyRemaps: [Int: KeyAction] = [:],
+        fnKeyRemaps: [Int: KeyAction] = [:],
+        perKeyColors: [Int: String] = [:],
         responseLevel: Int = 1,
         sleepTime: Int = 1,
         gameModeEnabled: Bool = false,
@@ -42,6 +46,8 @@ public struct KeyboardProfile: Identifiable, Codable, Sendable {
         self.rgbHexColor = rgbHexColor
         self.macLayoutEnabled = macLayoutEnabled
         self.keyRemaps = keyRemaps
+        self.fnKeyRemaps = fnKeyRemaps
+        self.perKeyColors = perKeyColors
         self.responseLevel = responseLevel
         self.sleepTime = sleepTime
         self.gameModeEnabled = gameModeEnabled

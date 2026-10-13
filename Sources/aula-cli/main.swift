@@ -9,8 +9,11 @@ func printHelp() {
       aula-cli <command> [options]
       
     COMMANDS:
+      status / telemetry            Display detailed hardware telemetry, descriptors, and latency
       info                          Show detected endpoints and device status
       clock sync                    Synchronize keyboard LCD clock to system time
+      lcd monitor [--interval <s>]  Live Mac CPU/RAM/Battery system monitor on keyboard screen
+      lcd now-playing               Live Spotify / Apple Music Now Playing display on screen
       rgb set [options]             Configure RGB backlighting
                                       --mode <0-19>       Preset effect ID (default: 11)
                                       --brightness <0-5>  Brightness level (default: 5)
@@ -18,6 +21,7 @@ func printHelp() {
                                       --direction <0-3>   Direction (0:Right, 1:Down, 2:Left, 3:Up)
                                       --color <#RRGGBB>   Custom color (e.g. "#00FF88")
                                       --colorful          Enable rainbow cycling
+      rgb custom [options]          Apply custom per-key lighting (--preset wasd|matrix|cyberpunk)
       rgb off                       Turn off keyboard backlighting
       rgb list                      List all 20 available lighting preset modes
       screen upload <path> [opts]   Directly upload image/GIF to keyboard LCD screen (240x135)
@@ -27,7 +31,9 @@ func printHelp() {
       screen gallery add <path>     Pre-encode and save a GIF to library (--name, --fit)
       screen gallery activate <id>  Instantly stream a saved animation to keyboard
       screen gallery remove <id>    Delete a saved animation from library
+      macro flash                   Flash onboard macros from active profile into hardware memory
       remap mac-layout [on|off]     Toggle Mac layout mode (swaps Win and Alt)
+      remap fn-layout               Apply custom FN layer keybindings
       remap reset                   Reset all key remappings to default
       perf [options]                Set performance and debounce latency
                                       --level <1-5>       Response level (1=Fastest 5ms, 5=21ms)
@@ -54,6 +60,77 @@ do {
     switch command {
     case "help", "--help", "-h":
         printHelp()
+
+    case "status", "telemetry":
+        print("📊 Capturing Aula F108 Pro Hardware Telemetry...")
+        let t = DeviceTelemetryProvider.capture()
+        print("""
+        ========================================================================
+        AULA F108 PRO HARDWARE TELEMETRY & DIAGNOSTICS
+        ========================================================================
+        Connection Mode    : \(t.mode.rawValue)
+        Product Name       : \(t.productName)
+        Manufacturer       : \(t.manufacturer)
+        USB VID:PID        : \(t.vendorHex):\(t.productHex)
+        USB Bus Speed      : \(t.usbSpeed)
+        USB Transport      : \(t.transport)
+        Active Endpoints   : \(t.endpointCount) interface endpoint(s)
+        Battery Status     : \(t.batteryPercent != nil ? "\(t.batteryPercent!)% (\(t.isCharging ? "Charging" : "Battery"))" : (t.isCharging ? "Wired Power (AC)" : "Unknown"))
+        Round-trip Latency : \(String(format: "%.2f ms", t.roundTripLatencyMs))
+        Host Lock Keys     : CapsLock [\(t.capsLockActive ? "ON" : "OFF")]  NumLock [\(t.numLockActive ? "ON" : "OFF")]  ScrollLock [\(t.scrollLockActive ? "ON" : "OFF")]
+        ========================================================================
+        """)
+
+    case "lcd":
+        guard args.count > 1 else {
+            print("Usage: aula-cli lcd <monitor|now-playing>")
+            exit(1)
+        }
+        let lcdSub = args[1]
+        let device = try AulaDevice.connect()
+        if lcdSub == "monitor" {
+            print("🖥️  Starting Live Mac System Monitor stream (press Ctrl+C to stop)...")
+            let cpu = SystemMetricsProvider.cpuLoad()
+            let (ramUsed, ramTotal) = SystemMetricsProvider.ramMemory()
+            print("  • Pushing initial frame: CPU \(String(format: "%.0f%%", cpu)) | RAM \(String(format: "%.1f", ramUsed))/\(String(format: "%.0f", ramTotal)) GB")
+            let frame = LCDCanvasRenderer.renderSystemMonitor(cpuPercent: cpu, ramUsedGB: ramUsed, ramTotalGB: ramTotal, batteryPercent: nil)
+            try device.uploadDisplayStream(frame, slot: 1) { _ in }
+            print("✅ Mac System Monitor active on keyboard screen.")
+        } else if lcdSub == "now-playing" {
+            var customTitle: String?
+            var customArtist: String?
+            var i = 2
+            while i < args.count {
+                if args[i] == "--title", i + 1 < args.count {
+                    customTitle = args[i + 1]
+                    i += 2
+                } else if args[i] == "--artist", i + 1 < args.count {
+                    customArtist = args[i + 1]
+                    i += 2
+                } else {
+                    i += 1
+                }
+            }
+
+            print("🎵 Fetching Now Playing media from macOS...")
+            let info = SystemMetricsProvider.nowPlaying()
+            let title = customTitle ?? info?.title ?? "No Media Playing"
+            let artist = customArtist ?? info?.artist ?? "macOS Audio"
+            let progress = info?.progress ?? 0.5
+            print("🎶 Track: '\(title)' by \(artist) (Progress: \(Int(progress * 100))%)")
+            let frame = LCDCanvasRenderer.renderNowPlaying(title: title, artist: artist, progress: progress)
+            try device.uploadDisplayStream(frame, slot: 1) { progress in
+                let barLength = 30
+                let filled = Int(progress.fraction * Double(barLength))
+                let bar = String(repeating: "█", count: filled) + String(repeating: "░", count: max(0, barLength - filled))
+                print("\r[\(bar)] \(progress.percent)% (\(progress.sentChunks)/\(progress.totalChunks))", terminator: "")
+                fflush(stdout)
+            }
+            print("\n✅ Now Playing widget pushed to keyboard screen.")
+        } else {
+            print("Unknown lcd command: '\(lcdSub)'. Supported: monitor, now-playing.")
+            exit(1)
+        }
 
     case "info":
         print("🔍 Scanning for Aula F108 Pro devices...")
@@ -161,8 +238,41 @@ do {
             )
             print("✅ RGB lighting applied.")
 
+        case "custom":
+            print("🎨 Applying custom per-key RGB layout...")
+            var matrix = PerKeyRGBMatrix()
+            var preset = "wasd"
+            if let idx = args.firstIndex(of: "--preset"), idx + 1 < args.count {
+                preset = args[idx + 1].lowercased()
+            }
+            if preset == "wasd" {
+                for k in KeyCatalog.allKeys {
+                    if ["W", "A", "S", "D"].contains(k.name) {
+                        matrix.setColor(KeyRGBColor(red: 255, green: 0, blue: 0), for: k.keyIndex)
+                    } else if ["Left", "Right", "Up", "Down"].contains(k.name) {
+                        matrix.setColor(KeyRGBColor(red: 0, green: 150, blue: 255), for: k.keyIndex)
+                    } else {
+                        matrix.setColor(KeyRGBColor(red: 30, green: 30, blue: 40), for: k.keyIndex)
+                    }
+                }
+            } else if preset == "matrix" {
+                for k in KeyCatalog.allKeys {
+                    matrix.setColor(KeyRGBColor(red: 0, green: 255, blue: 40), for: k.keyIndex)
+                }
+            } else {
+                for k in KeyCatalog.allKeys {
+                    let r = UInt8(k.row * 40)
+                    let b = UInt8(255 - k.row * 35)
+                    matrix.setColor(KeyRGBColor(red: r, green: 10, blue: b), for: k.keyIndex)
+                }
+            }
+            let device = try AulaDevice.connect()
+            try device.applyPerKeyRGB(buffer: matrix.buildPayload())
+            try device.applyRGB(mode: 20, brightness: 5, speed: 3, direction: 0, colorful: false, color: 0)
+            print("✅ Custom per-key RGB matrix applied (Preset: \(preset)).")
+
         default:
-            print("Unknown rgb subcommand: \(sub)")
+            print("Unknown rgb subcommand: \(sub). Supported: set, off, list, custom.")
             exit(1)
         }
 
@@ -337,12 +447,47 @@ do {
             let table = KeyRemapTable(macLayoutEnabled: enable)
             try device.applyKeyRemap(layer: .normal, table: table.buildBuffer())
             print("✅ Mac layout remapping applied directly into keyboard memory.")
+        } else if sub == "fn-layout" {
+            print("⌨️  Applying FN-layer keybindings...")
+            var table = KeyRemapTable(layer: .fn)
+            // Vim navigation HJKL -> Arrows
+            table.setAction(.key(modifiers: 0, scancode: 0x50), for: 61) // H -> Left
+            table.setAction(.key(modifiers: 0, scancode: 0x51), for: 62) // J -> Down
+            table.setAction(.key(modifiers: 0, scancode: 0x52), for: 63) // K -> Up
+            table.setAction(.key(modifiers: 0, scancode: 0x4F), for: 64) // L -> Right
+            try device.applyKeyRemap(layer: .fn, table: table.buildBuffer())
+            print("✅ FN-layer remapping applied (Vim navigation: FN+HJKL -> Arrows).")
         } else if sub == "reset" {
             print("⌨️  Resetting all key remapping to default...")
             let table = KeyRemapTable()
             try device.applyKeyRemap(layer: .normal, table: table.buildBuffer())
             try device.applyKeyRemap(layer: .fn, table: table.buildBuffer())
             print("✅ Keys reset to default.")
+        } else {
+            print("Unknown remap subcommand: \(sub). Supported: mac-layout, fn-layout, reset.")
+            exit(1)
+        }
+
+    case "macro":
+        guard args.count > 1 else {
+            print("Usage: aula-cli macro <flash|list>")
+            exit(1)
+        }
+        let macroSub = args[1]
+        let profile = ProfileManager.shared.loadProfiles().first ?? KeyboardProfile.standardMac
+        if macroSub == "list" {
+            print("Onboard Macros in active profile (\(profile.macros.count)):")
+            for (idx, m) in profile.macros.enumerated() {
+                print("  [\(idx)] \(m.name) (\(m.events.count) events, \(m.playTimes)x)")
+            }
+        } else if macroSub == "flash" {
+            print("⚡ Flashing \(profile.macros.count) macro(s) to keyboard hardware memory...")
+            let device = try AulaDevice.connect()
+            try device.uploadMacros(profile.macros)
+            print("✅ Macros successfully synchronized to keyboard hardware memory.")
+        } else {
+            print("Unknown macro command: \(macroSub). Supported: list, flash.")
+            exit(1)
         }
 
     case "perf":

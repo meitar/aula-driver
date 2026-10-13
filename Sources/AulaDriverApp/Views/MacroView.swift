@@ -27,21 +27,48 @@ public struct MacroView: View {
                             .foregroundColor(.secondary)
                     }
                     Spacer()
-                    Button("Create Macro") {
-                        let newMacro = KeyboardMacro(name: "New Macro \(macros.count + 1)")
-                        macros.append(newMacro)
-                        selectedMacro = newMacro
+                    HStack(spacing: 12) {
+                        if vm.isMacroRecording {
+                            Button {
+                                vm.stopMacroRecording()
+                            } label: {
+                                Label("Stop Recording", systemImage: "stop.fill")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.red)
+                        } else {
+                            Button {
+                                vm.startMacroRecording()
+                            } label: {
+                                Label("Record Macro", systemImage: "record.circle")
+                            }
+                            .buttonStyle(.bordered)
+                        }
+
+                        Button("New Empty") {
+                            let newMacro = KeyboardMacro(name: "Macro \(vm.activeMacros.count + 1)")
+                            vm.activeMacros.append(newMacro)
+                            selectedMacro = newMacro
+                        }
+                        .buttonStyle(.bordered)
+
+                        Button {
+                            vm.uploadMacrosToDevice()
+                        } label: {
+                            Label("Flash to Keyboard", systemImage: "bolt.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!vm.wiredConnected || vm.activeMacros.isEmpty)
                     }
-                    .buttonStyle(.borderedProminent)
                 }
 
                 HStack(alignment: .top, spacing: 20) {
                     // Macro List
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Onboard Macros (\(macros.count)/100)")
+                        Text("Onboard Macros (\(vm.activeMacros.count)/100)")
                             .font(.headline)
 
-                        List(macros, selection: $selectedMacro) { macro in
+                        List(vm.activeMacros, selection: $selectedMacro) { macro in
                             VStack(alignment: .leading) {
                                 Text(macro.name)
                                     .fontWeight(.semibold)
@@ -57,13 +84,32 @@ public struct MacroView: View {
                     }
 
                     // Macro Event Timeline
-                    if let macro = selectedMacro {
+                    if let macro = selectedMacro ?? vm.activeMacros.first {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Event Sequence for '\(macro.name)'")
-                                .font(.headline)
+                            HStack {
+                                Text("Sequence for '\(macro.name)'")
+                                    .font(.headline)
+                                Spacer()
+                                Button("Add 50ms Delay") {
+                                    if let idx = vm.activeMacros.firstIndex(where: { $0.id == macro.id }) {
+                                        vm.activeMacros[idx].events.append(MacroEvent(type: .delay, delayMs: 50))
+                                    }
+                                }
+                                .buttonStyle(.borderless)
+                                .font(.caption)
+
+                                Button("Clear Events") {
+                                    if let idx = vm.activeMacros.firstIndex(where: { $0.id == macro.id }) {
+                                        vm.activeMacros[idx].events.removeAll()
+                                    }
+                                }
+                                .buttonStyle(.borderless)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                            }
 
                             if macro.events.isEmpty {
-                                Text("No events in this macro.")
+                                Text(vm.isMacroRecording ? "Recording active... Type keys on keyboard." : "No events recorded yet. Click 'Record Macro' to start.")
                                     .foregroundColor(.secondary)
                                     .frame(maxWidth: .infinity, minHeight: 180)
                             } else {
@@ -78,6 +124,16 @@ public struct MacroView: View {
                                                 Text(event.displayString)
                                                     .font(.system(size: 13, design: .monospaced))
                                                 Spacer()
+                                                Button {
+                                                    if let mIdx = vm.activeMacros.firstIndex(where: { $0.id == macro.id }) {
+                                                        vm.activeMacros[mIdx].events.remove(at: index)
+                                                    }
+                                                } label: {
+                                                    Image(systemName: "trash")
+                                                        .font(.caption)
+                                                        .foregroundColor(.secondary)
+                                                }
+                                                .buttonStyle(.borderless)
                                             }
                                             .padding(6)
                                             .background(Color(NSColor.textBackgroundColor))

@@ -233,6 +233,94 @@ do {
     print("  ❌ ScreenGalleryManager test threw: \(error)")
 }
 
+// TEST 7: LCDCanvasRenderer System Monitor & Now Playing
+print("\n[Suite 7: LCDCanvasRenderer]")
+do {
+    let monitorData = LCDCanvasRenderer.renderSystemMonitor(
+        cpuPercent: 42.5,
+        ramUsedGB: 16.0,
+        ramTotalGB: 32.0,
+        batteryPercent: 85
+    )
+    assertEqual(monitorData.count, 16 * AulaConstants.chunkLength, "System Monitor frame is 65056 bytes (16 chunks)")
+    assertEqual(monitorData[0], 0x01, "System Monitor frame count is 1")
+
+    let nowPlayingData = LCDCanvasRenderer.renderNowPlaying(
+        title: "Test Track Title",
+        artist: "Test Artist",
+        album: "Test Album",
+        progress: 0.65
+    )
+    assertEqual(nowPlayingData.count, 16 * AulaConstants.chunkLength, "Now Playing frame is 65056 bytes (16 chunks)")
+    assertEqual(nowPlayingData[0], 0x01, "Now Playing frame count is 1")
+
+    if let current = SystemMetricsProvider.nowPlaying() {
+        print("  🎶 Live Now Playing Query: '\(current.title)' by '\(current.artist)'")
+        assertTrue(!current.title.isEmpty, "Detected track title is non-empty")
+    } else {
+        print("  ℹ️  No active music player running (Spotify/Music)")
+    }
+}
+
+// TEST 8: DeviceTelemetryProvider Capture
+print("\n[Suite 8: DeviceTelemetryProvider]")
+do {
+    let snapshot = DeviceTelemetryProvider.capture()
+    assertTrue(snapshot.timestamp.timeIntervalSinceNow < 1.0, "Telemetry timestamp is current")
+    assertTrue(snapshot.mode == .wiredUSB || snapshot.mode == .wireless24G || snapshot.mode == .disconnected, "Telemetry mode is valid")
+    // Latency is non-negative
+    assertTrue(snapshot.roundTripLatencyMs >= 0.0, "Latency is non-negative")
+}
+
+// TEST 9: AppProfileWatcher & Rules
+print("\n[Suite 9: AppProfileWatcher & Rules]")
+do {
+    let rule = AppProfileRule(
+        bundleIdentifier: "com.apple.dt.Xcode",
+        applicationName: "Xcode",
+        profileName: "Coding Profile"
+    )
+    let encoder = JSONEncoder()
+    let data = try encoder.encode(rule)
+    let decoded = try JSONDecoder().decode(AppProfileRule.self, from: data)
+
+    assertEqual(decoded.bundleIdentifier, "com.apple.dt.Xcode", "Bundle identifier preserved")
+    assertEqual(decoded.applicationName, "Xcode", "App name preserved")
+    assertEqual(decoded.profileName, "Coding Profile", "Profile name preserved")
+    assertEqual(decoded.id, "com.apple.dt.Xcode", "Rule ID matches bundle ID")
+} catch {
+    testsFailed += 1
+    print("  ❌ AppProfileWatcher test threw: \(error)")
+}
+
+// TEST 10: FN Layer & Macro/Consumer Remap Table
+print("\n[Suite 10: KeyRemapTable FN Layer & Advanced Actions]")
+do {
+    var fnTable = KeyRemapTable(layer: .fn)
+    // Map Esc (Key 1) to Macro #2, loop 3
+    fnTable.setAction(.macro(index: 2, loopCount: 3), for: 1)
+    // Map F1 (Key 2) to Media Play/Pause (0xCD)
+    fnTable.setAction(.consumer(code: 0xCD), for: 2)
+    // Map F2 (Key 3) to Mouse Left Click (1)
+    fnTable.setAction(.mouse(button: 1), for: 3)
+
+    let buffer = fnTable.buildBuffer()
+    assertEqual(buffer.count, 576, "FN remap table is 576 bytes")
+
+    // Esc offset = 1 * 4 = 4
+    assertEqual(buffer[4], 0x06, "Esc mapped to Macro action 0x06")
+    assertEqual(buffer[5], 2, "Esc triggers Macro index 2")
+    assertEqual(buffer[6], 3, "Esc triggers Macro loopCount 3")
+
+    // F1 offset = 2 * 4 = 8
+    assertEqual(buffer[8], 0x03, "F1 mapped to Consumer action 0x03")
+    assertEqual(buffer[9], 0xCD, "F1 mapped to Play/Pause (0xCD)")
+
+    // F2 offset = 3 * 4 = 12
+    assertEqual(buffer[12], 0x07, "F2 mapped to Mouse action 0x07")
+    assertEqual(buffer[13], 1, "F2 mapped to Mouse Button 1")
+}
+
 print("\n========================================")
 print("📊 Results: \(testsPassed) passed, \(testsFailed) failed")
 print("========================================")

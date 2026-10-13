@@ -83,6 +83,44 @@ public struct MainWindow: View {
                 }
             }
         }
+        .overlay(alignment: .top) {
+            if vm.showKnobHUD, let event = vm.recentKnobEvent {
+                HStack(spacing: 12) {
+                    Image(systemName: iconForKnob(event))
+                        .font(.title2)
+                        .foregroundColor(.accentColor)
+                    Text(titleForKnob(event))
+                        .font(.headline)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .background(.ultraThinMaterial)
+                .cornerRadius(24)
+                .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
+                .padding(.top, 20)
+                .animation(.easeInOut, value: vm.showKnobHUD)
+            }
+        }
         .frame(minWidth: 800, minHeight: 550)
+    }
+
+    private func iconForKnob(_ event: KnobEvent) -> String {
+        switch event {
+        case .volumeUp: return "speaker.wave.3.fill"
+        case .volumeDown: return "speaker.wave.1.fill"
+        case .mute: return "speaker.slash.fill"
+        case .playPause: return "playpause.fill"
+        case .unknown: return "dial.low.fill"
+        }
+    }
+
+    private func titleForKnob(_ event: KnobEvent) -> String {
+        switch event {
+        case .volumeUp: return "Volume Up"
+        case .volumeDown: return "Volume Down"
+        case .mute: return "Mute Toggled"
+        case .playPause: return "Play / Pause"
+        case .unknown(let code): return "Knob Code 0x\(String(format: "%02X", code))"
+        }
     }
 }

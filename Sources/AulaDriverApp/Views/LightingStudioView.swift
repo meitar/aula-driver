@@ -40,10 +40,20 @@ public struct LightingStudioView: View {
                                 Text("Brightness: \(vm.rgbBrightness)")
                                     .font(.subheadline)
                             }
-                            Slider(value: Binding(
-                                get: { Double(vm.rgbBrightness) },
-                                set: { vm.rgbBrightness = Int($0) }
-                            ), in: 0...5, step: 1)
+                            Slider(
+                                value: Binding(
+                                    get: { Double(vm.rgbBrightness) },
+                                    set: {
+                                        let intVal = Int($0)
+                                        if vm.rgbBrightness != intVal {
+                                            vm.rgbBrightness = intVal
+                                            vm.applyRGB()
+                                        }
+                                    }
+                                ),
+                                in: 0...5,
+                                step: 1
+                            )
                         }
 
                         // Speed
@@ -53,10 +63,20 @@ public struct LightingStudioView: View {
                                 Text("Speed: \(vm.rgbSpeed)")
                                     .font(.subheadline)
                             }
-                            Slider(value: Binding(
-                                get: { Double(vm.rgbSpeed) },
-                                set: { vm.rgbSpeed = Int($0) }
-                            ), in: 1...5, step: 1)
+                            Slider(
+                                value: Binding(
+                                    get: { Double(vm.rgbSpeed) },
+                                    set: {
+                                        let intVal = Int($0)
+                                        if vm.rgbSpeed != intVal {
+                                            vm.rgbSpeed = intVal
+                                            vm.applyRGB()
+                                        }
+                                    }
+                                ),
+                                in: 1...5,
+                                step: 1
+                            )
                         }
 
                         // Direction
@@ -70,6 +90,9 @@ public struct LightingStudioView: View {
                                 Text("Up").tag(3)
                             }
                             .pickerStyle(.segmented)
+                            .onChange(of: vm.rgbDirection) { _ in
+                                vm.applyRGB()
+                            }
                         }
                     }
 
@@ -81,9 +104,15 @@ public struct LightingStudioView: View {
                             Label("Rainbow Cycle (Colorful)", systemImage: "rainbow")
                         }
                         .toggleStyle(.checkbox)
+                        .onChange(of: vm.rgbColorful) { _ in
+                            vm.applyRGB()
+                        }
 
                         if !vm.rgbColorful {
                             ColorPicker("Custom Accent Color:", selection: $vm.rgbColor)
+                                .onChange(of: vm.rgbColor) { _ in
+                                    vm.applyRGB()
+                                }
                         }
                         Spacer()
                     }
@@ -94,8 +123,14 @@ public struct LightingStudioView: View {
 
                 // 20 Preset Cards Grid
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Preset Effects")
-                        .font(.headline)
+                    HStack {
+                        Text("Hardware LED Presets")
+                            .font(.headline)
+                        Spacer()
+                        Text("Click any effect to activate instantly")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
 
                     LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(LightingController.presets) { preset in
@@ -106,14 +141,19 @@ public struct LightingStudioView: View {
                                 VStack(spacing: 8) {
                                     Image(systemName: iconForPreset(preset.id))
                                         .font(.title2)
-                                        .foregroundColor(vm.rgbMode == preset.id ? .accentColor : .secondary)
+                                        .foregroundColor(vm.rgbMode == preset.id ? .accentColor : .primary)
                                     Text(preset.name)
                                         .font(.subheadline)
                                         .fontWeight(vm.rgbMode == preset.id ? .bold : .regular)
                                         .multilineTextAlignment(.center)
+                                        .lineLimit(1)
+                                    Text("Mode \(preset.id)")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
                                 }
-                                .padding()
-                                .frame(maxWidth: .infinity, minHeight: 80)
+                                .padding(.vertical, 12)
+                                .padding(.horizontal, 8)
+                                .frame(maxWidth: .infinity, minHeight: 88)
                                 .background(
                                     RoundedRectangle(cornerRadius: 10)
                                         .fill(vm.rgbMode == preset.id ? Color.accentColor.opacity(0.15) : Color(NSColor.controlBackgroundColor))
@@ -136,13 +176,24 @@ public struct LightingStudioView: View {
         switch id {
         case 0: return "moon.fill"
         case 1: return "lightbulb.fill"
-        case 2, 3: return "hand.tap.fill"
-        case 4, 5: return "sparkles"
-        case 6, 8: return "paintpalette.fill"
+        case 2: return "hand.tap.fill"
+        case 3: return "hand.raised.fill"
+        case 4: return "sparkles"
+        case 5: return "cloud.rain.fill"
+        case 6: return "rainbow"
         case 7: return "waveform"
-        case 9, 13: return "sun.radial.fill"
-        case 10, 11, 12, 16, 18: return "circle.dashed"
-        case 14, 15, 17, 19: return "wind"
+        case 8: return "paintpalette.fill"
+        case 9: return "arrow.up.left.and.arrow.down.right"
+        case 10: return "arrow.left.arrow.right"
+        case 11: return "circle.dashed"
+        case 12: return "arrow.triangle.2.circlepath"
+        case 13: return "burst.fill"
+        case 14: return "arrow.up.forward.app.fill"
+        case 15: return "water.waves"
+        case 16: return "wind"
+        case 17: return "heart.fill"
+        case 18: return "skew"
+        case 19: return "bolt.fill"
         default: return "sparkles"
         }
     }

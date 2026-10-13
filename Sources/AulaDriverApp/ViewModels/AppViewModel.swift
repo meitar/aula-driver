@@ -42,6 +42,34 @@ public final class AppViewModel: ObservableObject {
     @Published public var sleepTime: Int = 1 // 1 minute
     @Published public var gameModeEnabled: Bool = false
 
+    // Telemetry & Diagnostics
+    @Published public var telemetry: DeviceTelemetrySnapshot?
+
+    // Live Dynamic Screen
+    @Published public var liveLCDMode: String = "gallery" // "gallery", "monitor", "nowPlaying"
+    @Published public var nowPlayingTitle: String = "No Media Playing"
+    @Published public var nowPlayingArtist: String = "macOS Audio"
+    @Published public var nowPlayingProgress: Double = 0.0
+    @Published public var nowPlayingActive: Bool = false
+    @Published public var liveCPUPercent: Double = 0.0
+    @Published public var liveRAMUsedGB: Double = 0.0
+    @Published public var liveRAMTotalGB: Double = 16.0
+    @Published public var liveLCDStatus: String = ""
+
+    // Macros & Recording
+    @Published public var isMacroRecording: Bool = false
+    @Published public var activeMacros: [KeyboardMacro] = []
+
+    // Advanced Remaps & Per-Key RGB
+    @Published public var fnRemapTable = KeyRemapTable(layer: .fn)
+    @Published public var perKeyHexColors: [Int: String] = [:]
+
+    // Knob Events & App Watcher
+    @Published public var recentKnobEvent: KnobEvent?
+    @Published public var showKnobHUD: Bool = false
+    @Published public var appRules: [AppProfileRule] = []
+    @Published public var isAppWatcherActive: Bool = false
+
     // Profiles
     @Published public var profiles: [KeyboardProfile] = []
     @Published public var selectedProfile: KeyboardProfile?
@@ -53,8 +81,67 @@ public final class AppViewModel: ObservableObject {
         self.profiles = ProfileManager.shared.loadProfiles()
         self.selectedProfile = profiles.first
         self.galleryItems = ScreenGalleryManager.shared.loadItems()
+        self.activeMacros = profiles.first?.macros ?? []
+        self.appRules = AppProfileWatcher.shared.rules
         applyProfileToState(profiles.first ?? KeyboardProfile.standardMac)
         startMonitoring()
+
+        KnobEventMonitor.shared.onKnobAction = { [weak self] event in
+            Task { @MainActor in
+                self?.handleKnobEvent(event)
+            }
+        }
+        KnobEventMonitor.shared.startMonitoring()
+
+        AppProfileWatcher.shared.onProfileSwitchRequested = { [weak self] profileName in
+            Task { @MainActor in
+                self?.handleAppProfileSwitch(profileName)
+            }
+        }
+
+        BatteryGuardian.shared.onBatteryUpdated = { [weak self] percent in
+            Task { @MainActor in
+                self?.batteryPercent = percent
+            }
+        }
+        BatteryGuardian.shared.startMonitoring()
+
+        LiveLCDStreamer.shared.onNowPlayingStateChanged = { [weak self] data in
+            Task { @MainActor in
+                self?.nowPlayingTitle = data.title
+                self?.nowPlayingArtist = data.artist
+                self?.nowPlayingProgress = data.progress
+                self?.nowPlayingActive = data.isPlaying
+            }
+        }
+
+        LiveLCDStreamer.shared.onSystemMetricsChanged = { [weak self] data in
+            Task { @MainActor in
+                self?.liveCPUPercent = data.cpu
+                self?.liveRAMUsedGB = data.ramUsed
+                self?.liveRAMTotalGB = data.ramTotal
+            }
+        }
+
+        LiveLCDStreamer.shared.onStreamProgress = { [weak self] progress in
+            Task { @MainActor in
+                self?.uploadProgress = progress
+                if progress.sentChunks >= progress.totalChunks {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        self?.uploadProgress = DisplayUploadProgress(sentChunks: 0, totalChunks: 0)
+                    }
+                }
+            }
+        }
+
+        LiveLCDStreamer.shared.onStatusMessage = { [weak self] msg in
+            Task { @MainActor in
+                self?.liveLCDStatus = msg
+                self?.appendLog(msg)
+            }
+        }
+
+        refreshTelemetry()
     }
 
     public func startMonitoring() {
@@ -444,5 +531,137 @@ public final class AppViewModel: ObservableObject {
         let g = Double((num >> 8) & 0xFF) / 255.0
         let b = Double(num & 0xFF) / 255.0
         return Color(red: r, green: g, blue: b)
+    }
+
+    public func refreshTelemetry() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let snapshot = DeviceTelemetryProvider.capture()
+            Task { @MainActor in
+                self?.telemetry = snapshot
+            }
+        }
+    }
+
+    public func setLiveLCDMode(_ mode: String) {
+        self.liveLCDMode = mode
+        switch mode {
+        case "monitor":
+            LiveLCDStreamer.shared.start(mode: .systemMonitor(interval: 30.0))
+            appendLog("Live Mac System Monitor started on screen (updates every 30s).")
+        case "nowPlaying":
+            LiveLCDStreamer.shared.start(mode: .nowPlaying(interval: 3.0))
+            appendLog("Live Now Playing media widget started on screen (updates on track change).")
+        default:
+            LiveLCDStreamer.shared.stop()
+            self.uploadProgress = DisplayUploadProgress(sentChunks: 0, totalChunks: 0)
+            appendLog("Switched back to static GIF gallery.")
+        }
+    }
+
+    public func refreshLiveLCD() {
+        LiveLCDStreamer.shared.triggerManualRefresh()
+    }
+
+    public func startMacroRecording() {
+        isMacroRecording = true
+        var newMacro = KeyboardMacro(name: "Recorded Macro \(activeMacros.count + 1)", events: [])
+        MacroRecorder.shared.onEventRecorded = { [weak self] event in
+            Task { @MainActor in
+                guard let self, self.isMacroRecording else { return }
+                newMacro.events.append(event)
+                if let idx = self.activeMacros.firstIndex(where: { $0.id == newMacro.id }) {
+                    self.activeMacros[idx] = newMacro
+                } else {
+                    self.activeMacros.append(newMacro)
+                }
+            }
+        }
+        MacroRecorder.shared.startRecording()
+        appendLog("Macro recording started. Type on keyboard...")
+    }
+
+    public func stopMacroRecording() {
+        MacroRecorder.shared.stopRecording()
+        isMacroRecording = false
+        appendLog("Macro recording stopped. \(activeMacros.last?.events.count ?? 0) events recorded.")
+    }
+
+    public func uploadMacrosToDevice() {
+        runAsyncAction(name: "Flashing macros to keyboard memory") {
+            let device = try AulaDevice.connect()
+            try device.uploadMacros(self.activeMacros)
+            return "\(self.activeMacros.count) onboard macros synchronized to hardware memory."
+        }
+    }
+
+    public func applyFNKeyRemap() {
+        let table = fnRemapTable.buildBuffer()
+        runAsyncAction(name: "Applying FN-Layer Remappings") {
+            let device = try AulaDevice.connect()
+            try device.applyKeyRemap(layer: .fn, table: table)
+            return "FN-layer keybindings successfully applied."
+        }
+    }
+
+    public func setKeyColor(keyIndex: Int, color: Color) {
+        perKeyHexColors[keyIndex] = colorToHex(color)
+    }
+
+    public func applyPerKeyColorMatrix() {
+        var matrix = PerKeyRGBMatrix()
+        for (idx, hex) in perKeyHexColors {
+            let cleanHex = hex.replacingOccurrences(of: "#", with: "")
+            if let c = UInt32(cleanHex, radix: 16) {
+                let r = UInt8((c >> 16) & 0xFF)
+                let g = UInt8((c >> 8) & 0xFF)
+                let b = UInt8(c & 0xFF)
+                matrix.setColor(KeyRGBColor(red: r, green: g, blue: b), for: idx)
+            }
+        }
+        let buffer = matrix.buildPayload()
+        runAsyncAction(name: "Applying custom per-key colors") {
+            let device = try AulaDevice.connect()
+            try device.applyPerKeyRGB(buffer: buffer)
+            try device.applyRGB(mode: 20, brightness: 5, speed: 3, direction: 0, colorful: false, color: 0)
+            return "Per-key custom RGB matrix applied."
+        }
+    }
+
+    public func toggleAppWatcher() {
+        if isAppWatcherActive {
+            AppProfileWatcher.shared.stop()
+            isAppWatcherActive = false
+            appendLog("Application profile auto-switching paused.")
+        } else {
+            AppProfileWatcher.shared.start()
+            isAppWatcherActive = true
+            appendLog("Application profile auto-switching active.")
+        }
+    }
+
+    public func addAppRule(bundleID: String, name: String, profileName: String) {
+        AppProfileWatcher.shared.addRule(bundleIdentifier: bundleID, appName: name, profileName: profileName)
+        self.appRules = AppProfileWatcher.shared.rules
+        appendLog("Added auto-switch rule for '\(name)' -> '\(profileName)'.")
+    }
+
+    public func removeAppRule(bundleID: String) {
+        AppProfileWatcher.shared.removeRule(bundleIdentifier: bundleID)
+        self.appRules = AppProfileWatcher.shared.rules
+    }
+
+    private func handleKnobEvent(_ event: KnobEvent) {
+        self.recentKnobEvent = event
+        self.showKnobHUD = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            self?.showKnobHUD = false
+        }
+    }
+
+    private func handleAppProfileSwitch(_ profileName: String) {
+        if let target = profiles.first(where: { $0.name == profileName }) {
+            selectProfile(target)
+            appendLog("Auto-switched to profile '\(profileName)' for active app.")
+        }
     }
 }

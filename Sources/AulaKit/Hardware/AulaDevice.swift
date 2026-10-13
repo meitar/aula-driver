@@ -188,50 +188,81 @@ public final class AulaDevice {
         colorful: Bool,
         color: Int
     ) throws {
-        let normMode = min(max(mode, 0), 19)
+        let normMode = min(max(mode, 0), 25)
         let normBrightness = min(max(brightness, 0), 5)
         let normSpeed = min(max(speed, 1), 5)
         let normDirection = min(max(direction, 0), 3)
         let normColor = min(max(color, 0), 0xFFFFFF)
 
-        // Step 1: Begin transaction
-        try commandExchange(Self.packet(0x04, 0x18))
-        usleep(AulaConstants.commandDelayMs)
-
-        // Step 2: Lighting init 04 13 (byte[8] = 0x01)
+        // Step 1: Lighting init 04 13 (byte[8] = 0x01)
         var initPacket = Self.packet(0x04, 0x13)
         initPacket[8] = 0x01
         try commandExchange(initPacket)
         usleep(AulaConstants.commandDelayMs)
 
-        // Step 3: Payload
+        // Step 2: Payload (64 bytes)
         var payload = [UInt8](repeating: 0, count: AulaConstants.commandLength)
         payload[0] = UInt8(normMode)
         if normMode != 0 {
-            payload[1] = UInt8(normColor & 0xFF)             // R
-            payload[2] = UInt8((normColor >> 8) & 0xFF)      // G
-            payload[3] = UInt8((normColor >> 16) & 0xFF)     // B
+            payload[1] = UInt8((normColor >> 16) & 0xFF)    // R
+            payload[2] = UInt8((normColor >> 8) & 0xFF)     // G
+            payload[3] = UInt8(normColor & 0xFF)            // B
             payload[8] = colorful ? 1 : 0
             payload[9] = UInt8(normBrightness)
             payload[10] = UInt8(normSpeed)
             payload[11] = UInt8(normDirection)
         }
-        payload[14] = 0x55 // 0x55AA trailer
-        payload[15] = 0xAA
-        try Self.setReport(
-            device: commandDevice,
-            type: kIOHIDReportTypeFeature,
-            reportID: 0,
-            bytes: payload,
-            operation: "lighting payload"
-        )
+        // Standard Sonix delimiter at bytes 62 and 63
+        payload[62] = 0x55
+        payload[63] = 0xAA
+        // Keep bytes 14 and 15 set as well in case of firmware variant check
+        payload[14] = 0xAA
+        payload[15] = 0x55
+        try commandExchange(payload)
         usleep(AulaConstants.commandDelayMs)
 
-        // Step 4: Apply
+        // Step 3: Apply / Save (04 02)
         try commandExchange(Self.packet(0x04, 0x02))
         usleep(AulaConstants.commandDelayMs)
+    }
 
-        // Step 5: Finalize (no readback)
+    // MARK: - Macro Synchronization
+    public func uploadMacros(_ macros: [KeyboardMacro]) throws {
+        let serialized = try MacroEngine.serializeMacros(macros)
+        let packetCount = serialized.count / AulaConstants.commandLength
+
+        // 1. Begin transaction
+        try commandExchange(Self.packet(0x04, 0x18))
+
+        // 2. Macro data header (0x04 0x15, byte[8] = packet count)
+        var header = Self.packet(0x04, 0x15)
+        header[8] = UInt8(packetCount)
+        try commandExchange(header)
+
+        // 3. Send data packets (64 bytes each)
+        for i in 0..<packetCount {
+            let start = i * AulaConstants.commandLength
+            let end = start + AulaConstants.commandLength
+            let packet = Array(serialized[start..<end])
+            if i == packetCount - 1 {
+                // Readback on final packet
+                try commandExchange(packet)
+            } else {
+                try Self.setReport(
+                    device: commandDevice,
+                    type: kIOHIDReportTypeFeature,
+                    reportID: 0,
+                    bytes: packet,
+                    operation: "macro chunk \(i + 1)/\(packetCount)"
+                )
+                usleep(AulaConstants.commandDelayMs)
+            }
+        }
+
+        // 4. Apply
+        try commandExchange(Self.packet(0x04, 0x02))
+
+        // 5. Finalize
         let finalPacket = Self.packet(0x04, 0xF0)
         try? sendFeatureNoReadback(finalPacket)
     }

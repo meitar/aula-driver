@@ -79,6 +79,82 @@ public struct ProfileView: View {
                         )
                     }
                 }
+
+                // Application Auto-Switching Rules
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Application Auto-Switching Rules")
+                                .font(.headline)
+                            Text("Automatically apply keyboard profiles when specific macOS applications become active.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: Binding(
+                            get: { vm.isAppWatcherActive },
+                            set: { _ in vm.toggleAppWatcher() }
+                        ))
+                        .toggleStyle(.switch)
+                    }
+
+                    if vm.appRules.isEmpty {
+                        VStack(spacing: 8) {
+                            Text("No application rules configured yet.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            HStack(spacing: 12) {
+                                Button("+ Rule for Xcode") {
+                                    vm.addAppRule(bundleID: "com.apple.dt.Xcode", name: "Xcode", profileName: vm.selectedProfile?.name ?? "Standard Mac")
+                                }
+                                .buttonStyle(.bordered)
+                                Button("+ Rule for Terminal") {
+                                    vm.addAppRule(bundleID: "com.apple.Terminal", name: "Terminal", profileName: vm.selectedProfile?.name ?? "Standard Mac")
+                                }
+                                .buttonStyle(.bordered)
+                                Button("+ Rule for Steam") {
+                                    vm.addAppRule(bundleID: "com.valvesoftware.steam", name: "Steam", profileName: "Gaming (5ms, Win Locked)")
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color(NSColor.textBackgroundColor))
+                        .cornerRadius(8)
+                    } else {
+                        VStack(spacing: 8) {
+                            ForEach(vm.appRules) { rule in
+                                HStack {
+                                    Image(systemName: "app.badge")
+                                        .foregroundColor(.accentColor)
+                                    Text(rule.applicationName)
+                                        .fontWeight(.semibold)
+                                    Text("(\(rule.bundleIdentifier))")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    Text("→  \(rule.profileName)")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                    Button {
+                                        vm.removeAppRule(bundleID: rule.bundleIdentifier)
+                                    } label: {
+                                        Image(systemName: "trash")
+                                            .foregroundColor(.red)
+                                    }
+                                    .buttonStyle(.borderless)
+                                }
+                                .padding(8)
+                                .background(Color(NSColor.textBackgroundColor))
+                                .cornerRadius(6)
+                            }
+                        }
+                    }
+                }
+                .padding()
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(12)
             }
             .padding(20)
         }

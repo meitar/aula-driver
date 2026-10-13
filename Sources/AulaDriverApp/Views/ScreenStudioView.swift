@@ -4,7 +4,6 @@ import UniformTypeIdentifiers
 
 public struct ScreenStudioView: View {
     @ObservedObject var vm: AppViewModel
-    @State private var customTitle = ""
 
     public var body: some View {
         ScrollView {
@@ -13,32 +12,178 @@ public struct ScreenStudioView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("TFT Screen Studio")
                         .font(.system(size: 26, weight: .bold))
-                    Text("Customize the 1.14\" 240×135 IPS Display with instant GIF switching, gallery presets, and clock sync")
+                    Text("Flash animations to the 1.14\" IPS display (~15–30s upload), manage GIF gallery presets, and sync clock")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
 
-                // Clock Sync Card
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Keyboard Clock")
-                            .font(.headline)
-                        Text("Synchronize LCD date and time with your macOS system clock.")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+                // Screen Display Mode Selector
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Display Mode")
+                        .font(.headline)
+                    Picker("Display Mode", selection: $vm.liveLCDMode) {
+                        Text("GIF Gallery").tag("gallery")
+                        Text("Live Mac System Monitor").tag("monitor")
+                        Text("Now Playing Music Widget").tag("nowPlaying")
                     }
-                    Spacer()
-                    Button {
-                        vm.syncClock()
-                    } label: {
-                        Label("Sync Clock", systemImage: "clock.badge.checkmark")
+                    .pickerStyle(.segmented)
+                    .onChange(of: vm.liveLCDMode) { mode in
+                        vm.setLiveLCDMode(mode)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!vm.wiredConnected)
                 }
                 .padding()
                 .background(Color(NSColor.controlBackgroundColor))
                 .cornerRadius(12)
+
+                if vm.liveLCDMode == "monitor" {
+                    // System Monitor Active Card
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack {
+                            Image(systemName: "cpu")
+                                .foregroundColor(.cyan)
+                                .font(.title3)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Live Mac System Monitor Active")
+                                    .font(.headline)
+                                Text("Pushed to keyboard screen • Refreshes every 30s")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            if !vm.liveLCDStatus.isEmpty {
+                                Text(vm.liveLCDStatus)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Color.cyan.opacity(0.15))
+                                    .cornerRadius(6)
+                            }
+                        }
+
+                        // Live Metrics Display
+                        HStack(spacing: 24) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("CPU LOAD")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.secondary)
+                                Text(String(format: "%.0f%%", vm.liveCPUPercent))
+                                    .font(.system(size: 22, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.cyan)
+                            }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("RAM USAGE")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.secondary)
+                                Text(String(format: "%.1f / %.0f GB", vm.liveRAMUsedGB, vm.liveRAMTotalGB))
+                                    .font(.system(size: 22, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.purple)
+                            }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("KEYBOARD SCREEN")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.secondary)
+                                Text("240 × 135 LCD")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.green)
+                            }
+                        }
+                        .padding(.vertical, 6)
+
+                        HStack(spacing: 12) {
+                            Button {
+                                vm.refreshLiveLCD()
+                            } label: {
+                                Label("Refresh Screen Now", systemImage: "arrow.clockwise")
+                            }
+                            .buttonStyle(.borderedProminent)
+
+                            Button("Stop Stream") {
+                                vm.setLiveLCDMode("gallery")
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                    .padding()
+                    .background(Color.cyan.opacity(0.08))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.cyan.opacity(0.3), lineWidth: 1))
+                    .cornerRadius(12)
+                } else if vm.liveLCDMode == "nowPlaying" {
+                    // Now Playing Active Card
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack {
+                            Image(systemName: "music.note")
+                                .foregroundColor(.green)
+                                .font(.title3)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Live Now Playing Widget Active")
+                                    .font(.headline)
+                                Text("Pushed to keyboard screen • Automatically updates on song change")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            if !vm.liveLCDStatus.isEmpty {
+                                Text(vm.liveLCDStatus)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Color.green.opacity(0.15))
+                                    .cornerRadius(6)
+                            }
+                        }
+
+                        // Live Track Display
+                        HStack(spacing: 16) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(Color.green.opacity(0.2))
+                                    .frame(width: 50, height: 50)
+                                Image(systemName: "waveform")
+                                    .font(.title2)
+                                    .foregroundColor(.green)
+                            }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(vm.nowPlayingTitle)
+                                    .font(.system(size: 18, weight: .bold))
+                                    .lineLimit(1)
+                                Text(vm.nowPlayingArtist)
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+
+                                if vm.nowPlayingProgress > 0 {
+                                    ProgressView(value: vm.nowPlayingProgress)
+                                        .tint(.green)
+                                        .frame(maxWidth: 240)
+                                }
+                            }
+                        }
+                        .padding(.vertical, 4)
+
+                        HStack(spacing: 12) {
+                            Button {
+                                vm.refreshLiveLCD()
+                            } label: {
+                                Label("Push to Screen Now", systemImage: "bolt.fill")
+                            }
+                            .buttonStyle(.borderedProminent)
+
+                            Button("Stop Stream") {
+                                vm.setLiveLCDMode("gallery")
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                    .padding()
+                    .background(Color.green.opacity(0.08))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.green.opacity(0.3), lineWidth: 1))
+                    .cornerRadius(12)
+                }
 
                 // GIF Gallery Section (Multiple GIFs Quick Switcher)
                 VStack(alignment: .leading, spacing: 14) {
@@ -46,7 +191,7 @@ public struct ScreenStudioView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Screen Animation Gallery")
                                 .font(.headline)
-                            Text("Stored locally in pre-encoded format for instant 1-click activation without re-encoding.")
+                            Text("Stored locally in ready-to-stream format. Activating streams the animation directly to keyboard SPI flash (~15–30s).")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
@@ -133,10 +278,6 @@ public struct ScreenStudioView: View {
                                 }
                             }
 
-                            TextField("Title (e.g. Cyberpunk Cat)", text: $customTitle)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(maxWidth: 280)
-
                             Picker("Fit Mode:", selection: $vm.screenFitMode) {
                                 ForEach(ScreenFitMode.allCases) { mode in
                                     Text(mode.title).tag(mode)
@@ -148,9 +289,8 @@ public struct ScreenStudioView: View {
                             HStack(spacing: 12) {
                                 Button {
                                     if let url = vm.selectedImageURL {
-                                        let title = customTitle.isEmpty ? url.deletingPathExtension().lastPathComponent : customTitle
+                                        let title = url.deletingPathExtension().lastPathComponent
                                         vm.addGIFToGallery(url: url, title: title, fitMode: vm.screenFitMode)
-                                        customTitle = ""
                                     }
                                 } label: {
                                     Label("Save to Gallery", systemImage: "plus.circle")
@@ -160,12 +300,11 @@ public struct ScreenStudioView: View {
 
                                 Button {
                                     if let url = vm.selectedImageURL {
-                                        let title = customTitle.isEmpty ? url.deletingPathExtension().lastPathComponent : customTitle
+                                        let title = url.deletingPathExtension().lastPathComponent
                                         vm.addGIFToGallery(url: url, title: title, fitMode: vm.screenFitMode)
                                         if let lastItem = vm.galleryItems.first {
                                             vm.activateGalleryItem(lastItem)
                                         }
-                                        customTitle = ""
                                     }
                                 } label: {
                                     Label("Save & Activate", systemImage: "bolt.fill")
@@ -177,7 +316,7 @@ public struct ScreenStudioView: View {
                     }
 
                     // Upload Progress Bar
-                    if vm.uploadProgress.totalChunks > 0 {
+                    if vm.uploadProgress.totalChunks > 0 && vm.uploadProgress.sentChunks < vm.uploadProgress.totalChunks {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
                                 Text("Streaming to LCD Screen...")
@@ -204,10 +343,10 @@ public struct ScreenStudioView: View {
                         .foregroundColor(.blue)
                         .font(.title3)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Instant GIF Gallery Architecture")
+                        Text("Hardware SPI Flash Animation Storage")
                             .font(.subheadline)
                             .fontWeight(.semibold)
-                        Text("The keyboard's SPI flash holds 1 active animation slot (capped at 141 frames to protect menu graphics). The driver maintains your gallery on disk in ready-to-stream RGB565 binary format. Switching between animations sends the pre-encoded stream directly over USB-C in 1–3 seconds with 0 re-encoding delay.")
+                        Text("The keyboard's onboard SPI flash holds 1 active animation slot (up to 141 frames). Because animations are written directly to physical flash memory over USB HID with hardware ACK verification, streaming an animation takes ~15–30 seconds depending on frame count. Once stored, playback runs autonomously on-hardware at smooth 30 FPS.")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -309,9 +448,6 @@ public struct ScreenStudioView: View {
 
         if panel.runModal() == .OK {
             vm.selectedImageURL = panel.url
-            if customTitle.isEmpty, let name = panel.url?.deletingPathExtension().lastPathComponent {
-                customTitle = name
-            }
         }
     }
 }

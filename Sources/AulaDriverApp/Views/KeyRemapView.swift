@@ -19,9 +19,13 @@ public struct KeyRemapView: View {
                     }
                     Spacer()
                     Button {
-                        vm.applyKeyRemap()
+                        if vm.remapLayer == .fn {
+                            vm.applyFNKeyRemap()
+                        } else {
+                            vm.applyKeyRemap()
+                        }
                     } label: {
-                        Label("Save to Keyboard", systemImage: "square.and.arrow.down")
+                        Label("Save \(vm.remapLayer == .fn ? "FN Layer" : "Normal Layer") to Keyboard", systemImage: "square.and.arrow.down")
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(!vm.wiredConnected)
@@ -42,12 +46,18 @@ public struct KeyRemapView: View {
 
                     Spacer()
 
-                    Picker("Active Layer:", selection: $vm.remapLayer) {
-                        Text("Normal Layer").tag(KeyRemapLayer.normal)
-                        Text("FN Layer").tag(KeyRemapLayer.fn)
+                    HStack(spacing: 8) {
+                        Text("Active Layer:")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        Picker("Active Layer", selection: $vm.remapLayer) {
+                            Text("Normal Layer").tag(KeyRemapLayer.normal)
+                            Text("FN Layer").tag(KeyRemapLayer.fn)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(width: 220)
                     }
-                    .pickerStyle(.segmented)
-                    .frame(width: 200)
                 }
                 .padding()
                 .background(Color(NSColor.controlBackgroundColor))
@@ -55,20 +65,28 @@ public struct KeyRemapView: View {
 
                 // Visual Keyboard Layout
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Interactive 108-Key Layout (Click any key to inspect or customize)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    HStack {
+                        Text("Interactive 108-Key Layout (Click any key to inspect or customize)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("Active Layer: \(vm.remapLayer == .fn ? "FN Layer (Secondary)" : "Normal Layer (Base)")")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(vm.remapLayer == .fn ? .orange : .accentColor)
+                    }
 
                     ScrollView(.horizontal, showsIndicators: true) {
                         VStack(alignment: .leading, spacing: 6) {
                             ForEach(0...5, id: \.self) { row in
                                 HStack(spacing: 5) {
                                     ForEach(KeyCatalog.allKeys.filter { $0.row == row }, id: \.keyIndex) { key in
+                                        let activeTable = vm.remapLayer == .fn ? vm.fnRemapTable : vm.currentRemapTable
                                         KeyButton(
                                             key: key,
                                             isSelected: selectedKey?.keyIndex == key.keyIndex,
-                                            isRemapped: vm.currentRemapTable.actions[key.keyIndex] != nil,
-                                            actionText: vm.currentRemapTable.actions[key.keyIndex]?.displayDescription
+                                            isRemapped: activeTable.actions[key.keyIndex] != nil,
+                                            actionText: activeTable.actions[key.keyIndex]?.displayDescription
                                         ) {
                                             selectedKey = key
                                         }
@@ -88,6 +106,9 @@ public struct KeyRemapView: View {
                         HStack {
                             Text("Key: \(key.name)")
                                 .font(.headline)
+                            Text("(\(vm.remapLayer == .fn ? "FN Layer" : "Normal Layer"))")
+                                .font(.subheadline)
+                                .foregroundColor(vm.remapLayer == .fn ? .orange : .accentColor)
                             Spacer()
                             Text("Key Index: \(key.keyIndex) | Scancode: 0x\(String(key.code, radix: 16))")
                                 .font(.caption)
@@ -96,20 +117,36 @@ public struct KeyRemapView: View {
 
                         HStack(spacing: 16) {
                             Button("Reset to Default") {
-                                vm.currentRemapTable.resetKey(key.keyIndex)
+                                if vm.remapLayer == .fn {
+                                    vm.fnRemapTable.resetKey(key.keyIndex)
+                                } else {
+                                    vm.currentRemapTable.resetKey(key.keyIndex)
+                                }
                             }
                             .buttonStyle(.bordered)
 
                             Button("Media: Play / Pause") {
-                                vm.currentRemapTable.setAction(.consumer(code: 0xCD), for: key.keyIndex)
+                                if vm.remapLayer == .fn {
+                                    vm.fnRemapTable.setAction(.consumer(code: 0xCD), for: key.keyIndex)
+                                } else {
+                                    vm.currentRemapTable.setAction(.consumer(code: 0xCD), for: key.keyIndex)
+                                }
                             }
 
                             Button("Media: Mute") {
-                                vm.currentRemapTable.setAction(.consumer(code: 0xE2), for: key.keyIndex)
+                                if vm.remapLayer == .fn {
+                                    vm.fnRemapTable.setAction(.consumer(code: 0xE2), for: key.keyIndex)
+                                } else {
+                                    vm.currentRemapTable.setAction(.consumer(code: 0xE2), for: key.keyIndex)
+                                }
                             }
 
                             Button("Mouse: Left Click") {
-                                vm.currentRemapTable.setAction(.mouse(button: 1), for: key.keyIndex)
+                                if vm.remapLayer == .fn {
+                                    vm.fnRemapTable.setAction(.mouse(button: 1), for: key.keyIndex)
+                                } else {
+                                    vm.currentRemapTable.setAction(.mouse(button: 1), for: key.keyIndex)
+                                }
                             }
                         }
                     }
