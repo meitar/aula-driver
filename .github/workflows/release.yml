@@ -16,21 +16,27 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Build aula-cli (Release)
+      - name: Build aula-cli Universal Binary
         run: |
-          swift build -c release --product aula-cli
+          swift build -c release --product aula-cli --triple arm64-apple-macosx
+          swift build -c release --product aula-cli --triple x86_64-apple-macosx
           mkdir -p dist
-          cp .build/release/aula-cli dist/aula-cli
+          lipo -create -output dist/aula-cli \
+            .build/arm64-apple-macosx/release/aula-cli \
+            .build/x86_64-apple-macosx/release/aula-cli
           cd dist
           tar -czvf aula-cli-${{ github.ref_name }}-macos.tar.gz aula-cli
           cd ..
 
-      - name: Build AulaDriverApp (Release)
+      - name: Build AulaDriverApp Universal Binary
         run: |
-          swift build -c release --product AulaDriverApp
+          swift build -c release --product AulaDriverApp --triple arm64-apple-macosx
+          swift build -c release --product AulaDriverApp --triple x86_64-apple-macosx
           mkdir -p AulaDriverApp.app/Contents/MacOS
           mkdir -p AulaDriverApp.app/Contents/Resources
-          cp .build/release/AulaDriverApp AulaDriverApp.app/Contents/MacOS/AulaDriverApp
+          lipo -create -output AulaDriverApp.app/Contents/MacOS/AulaDriverApp \
+            .build/arm64-apple-macosx/release/AulaDriverApp \
+            .build/x86_64-apple-macosx/release/AulaDriverApp
           cat << 'EOF' > AulaDriverApp.app/Contents/Info.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
