@@ -148,8 +148,9 @@ public final class AppViewModel: ObservableObject {
         refreshEndpoints()
         let monitor = HIDDeviceMonitor()
         monitor.onDevicesChanged = { [weak self] in
+            guard let self else { return }
             Task { @MainActor in
-                self?.refreshEndpoints()
+                self.refreshEndpoints()
             }
         }
         monitor.start()
@@ -157,8 +158,9 @@ public final class AppViewModel: ObservableObject {
 
         // Periodic battery query when dongle is connected
         batteryTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            guard let self else { return }
             Task { @MainActor in
-                self?.queryBatterySilently()
+                self.queryBatterySilently()
             }
         }
     }
@@ -535,9 +537,10 @@ public final class AppViewModel: ObservableObject {
 
     public func refreshTelemetry() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
             let snapshot = DeviceTelemetryProvider.capture()
             Task { @MainActor in
-                self?.telemetry = snapshot
+                self.telemetry = snapshot
             }
         }
     }
