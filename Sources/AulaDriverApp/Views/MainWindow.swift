@@ -1,35 +1,12 @@
 import AulaKit
 import SwiftUI
 
-public enum NavigationTab: String, CaseIterable, Identifiable {
-    case dashboard = "Dashboard"
-    case screen = "TFT Screen"
-    case lighting = "RGB Lighting"
-    case remap = "Key Remap"
-    case macros = "Macros"
-    case profiles = "Profiles"
-
-    public var id: String { rawValue }
-
-    public var icon: String {
-        switch self {
-        case .dashboard: return "gauge"
-        case .screen: return "display"
-        case .lighting: return "sparkles"
-        case .remap: return "keyboard"
-        case .macros: return "command"
-        case .profiles: return "folder.fill"
-        }
-    }
-}
-
 public struct MainWindow: View {
     @ObservedObject var vm: AppViewModel
-    @State private var selectedTab: NavigationTab = .dashboard
 
     public var body: some View {
         NavigationSplitView {
-            List(NavigationTab.allCases, selection: $selectedTab) { tab in
+            List(NavigationTab.allCases, selection: $vm.selectedTab) { tab in
                 NavigationLink(value: tab) {
                     Label(tab.rawValue, systemImage: tab.icon)
                 }
@@ -40,7 +17,7 @@ public struct MainWindow: View {
         } detail: {
             VStack(spacing: 0) {
                 Group {
-                    switch selectedTab {
+                    switch vm.selectedTab {
                     case .dashboard:
                         DashboardView(vm: vm)
                     case .screen:
@@ -53,6 +30,8 @@ public struct MainWindow: View {
                         MacroView(vm: vm)
                     case .profiles:
                         ProfileView(vm: vm)
+                    case .about:
+                        AboutView(vm: vm)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -4,3 +4,5 @@
 *~
 DerivedData/
 *.xcodeproj
+*.app/
+dist/

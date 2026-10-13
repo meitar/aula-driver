@@ -4,8 +4,33 @@ import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
 
+public enum NavigationTab: String, CaseIterable, Identifiable {
+    case dashboard = "Dashboard"
+    case screen = "TFT Screen"
+    case lighting = "RGB Lighting"
+    case remap = "Key Remap"
+    case macros = "Macros"
+    case profiles = "Profiles"
+    case about = "About"
+
+    public var id: String { rawValue }
+
+    public var icon: String {
+        switch self {
+        case .dashboard: return "gauge"
+        case .screen: return "display"
+        case .lighting: return "sparkles"
+        case .remap: return "keyboard"
+        case .macros: return "command"
+        case .profiles: return "folder.fill"
+        case .about: return "info.circle"
+        }
+    }
+}
+
 @MainActor
 public final class AppViewModel: ObservableObject {
+    @Published public var selectedTab: NavigationTab = .dashboard
     @Published public var wiredConnected = false
     @Published public var dongleConnected = false
     @Published public var wiredEndpoints: [HIDEndpointInfo] = []

@@ -29,5 +29,14 @@ struct AulaDriverApp: App {
             MainWindow(vm: viewModel)
         }
         .windowResizability(.contentSize)
+        .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About Aula Driver") {
+                    viewModel.selectedTab = .about
+                    openWindow(id: "dashboard")
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+            }
+        }
     }
 }

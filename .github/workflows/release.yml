@@ -32,43 +32,11 @@ jobs:
         run: |
           swift build -c release --product AulaDriverApp --triple arm64-apple-macosx
           swift build -c release --product AulaDriverApp --triple x86_64-apple-macosx
-          mkdir -p AulaDriverApp.app/Contents/MacOS
-          mkdir -p AulaDriverApp.app/Contents/Resources
-          cp Resources/AppIcon.icns AulaDriverApp.app/Contents/Resources/AppIcon.icns
-          lipo -create -output AulaDriverApp.app/Contents/MacOS/AulaDriverApp \
+          mkdir -p .build/universal/release
+          lipo -create -output .build/universal/release/AulaDriverApp \
             .build/arm64-apple-macosx/release/AulaDriverApp \
             .build/x86_64-apple-macosx/release/AulaDriverApp
-          VERSION_CLEAN="${{ github.ref_name }}"
-          VERSION_CLEAN="${VERSION_CLEAN#v}"
-          cat << EOF > AulaDriverApp.app/Contents/Info.plist
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>CFBundleExecutable</key>
-              <string>AulaDriverApp</string>
-              <key>CFBundleIconFile</key>
-              <string>AppIcon</string>
-              <key>CFBundleIconName</key>
-              <string>AppIcon</string>
-              <key>CFBundleIdentifier</key>
-              <string>com.aulakit.driver</string>
-              <key>CFBundleName</key>
-              <string>Aula Driver</string>
-              <key>CFBundlePackageType</key>
-              <string>APPL</string>
-              <key>CFBundleShortVersionString</key>
-              <string>${VERSION_CLEAN}</string>
-              <key>CFBundleVersion</key>
-              <string>${VERSION_CLEAN}</string>
-              <key>LSMinimumSystemVersion</key>
-              <string>13.0</string>
-              <key>NSHighResolutionCapable</key>
-              <true/>
-          </dict>
-          </plist>
-          EOF
-          codesign --force --deep --sign - AulaDriverApp.app
+          ./scripts/bundle_app.sh "${{ github.ref_name }}"
           zip -r dist/AulaDriverApp-${{ github.ref_name }}.zip AulaDriverApp.app
 
       - name: Generate Checksums

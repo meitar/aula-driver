@@ -107,6 +107,13 @@ public struct MenuBarView: View {
             }
             .keyboardShortcut("d", modifiers: .command)
 
+            Button {
+                vm.selectedTab = .about
+                onOpenDashboard()
+            } label: {
+                Label("About Aula Driver...", systemImage: "info.circle")
+            }
+
             Button("Quit Aula Driver") {
                 NSApplication.shared.terminate(nil)
             }
