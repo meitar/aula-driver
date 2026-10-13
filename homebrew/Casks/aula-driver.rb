@@ -1,6 +1,6 @@
 cask "aula-driver" do
-  version "1.0.2"
-  sha256 "600ec4a0aa0a8c51e844dbad522af6500193e64adb889a169ac47ed5dd870a02"
+  version "1.0.3"
+  sha256 "48db3be891a5285b94c1d4a6ca42d9bd12a09ddab5d8e5db4bc9484669ea8526"
 
   url "https://github.com/meitar/aula-driver/releases/download/v#{version}/AulaDriverApp-v#{version}.zip"
   name "Aula Driver"
